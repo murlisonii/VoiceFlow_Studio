@@ -11,7 +11,7 @@ const CodeBlock = ({ children }: { children: React.ReactNode }) => (
 
 export function ApiDocs() {
   return (
-    (<div className="p-4 space-y-6">
+    <div className="p-4 space-y-6">
       <Card>
         <CardHeader>
           <CardTitle>API & SDK Documentation</CardTitle>
@@ -78,6 +78,22 @@ const { response } = await incorporateCustomerServiceKnowledge({
 
 console.log(response);`}
             </CodeBlock>
+            
+            <h4 className="font-semibold mt-4 mb-2">C. Elder Care Assistant</h4>
+            <p>This agent can read a medical report in PDF format and answer patient questions about it.</p>
+            <CodeBlock>
+{`import { assistElderlyPatient } from '@/ai/flows/assist-elderly-patient';
+
+const medicalReportPdf = 'data:application/pdf;base64,...'; // Your PDF data
+const patientQuery = "What does my latest blood pressure reading mean?";
+
+const { response } = await assistElderlyPatient({
+  medicalReportPdf,
+  patientQuery
+});
+
+console.log(response);`}
+            </CodeBlock>
         </CardContent>
       </Card>
 
@@ -103,6 +119,6 @@ const { audioDataUri } = await convertTextToSpeech({ text: textToSpeak });
         </CardContent>
       </Card>
 
-    </div>)
+    </div>
   );
 }
