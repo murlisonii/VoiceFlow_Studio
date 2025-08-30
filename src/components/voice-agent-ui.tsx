@@ -13,6 +13,7 @@ import { ConversationDisplay, type Message } from "./conversation-display";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { Separator } from "@/components/ui/separator";
+import { AgentAvatar } from "./agent-avatar";
 
 // AI Flow Imports
 import { transcribeSpeechToText } from "@/ai/flows/transcribe-speech-to-text";
@@ -185,6 +186,7 @@ export function VoiceAgentUI() {
       await processRecording();
     } else {
       // Start recording
+      setMessages([]);
       await startRecording();
       setStatus("recording");
     }
@@ -215,7 +217,7 @@ export function VoiceAgentUI() {
          return <><Volume2 className="h-6 w-6 mr-2 animate-pulse" /> Speaking...</>;
       case "idle":
       default:
-        return <><Mic className="h-6 w-6 mr-2" /> Start Recording</>;
+        return <><Mic className="h-6 w-6 mr-2" /> Start New Conversation</>;
     }
   };
   
@@ -235,7 +237,7 @@ export function VoiceAgentUI() {
             <RadioGroup
               value={agentType}
               onValueChange={(value) => handleAgentChange(value as AgentType)}
-              disabled={isProcessing || isRecording}
+              disabled={isProcessing || isRecording || status === 'speaking'}
             >
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="generic" id="generic" />
@@ -256,7 +258,7 @@ export function VoiceAgentUI() {
             <KnowledgeBase
               value={knowledgeBase!}
               onChange={setKnowledgeBase}
-              disabled={isProcessing || isRecording}
+              disabled={isProcessing || isRecording || status === 'speaking'}
               label="Customer Service Knowledge Base (Text)"
               placeholder="Enter common support questions and answers here..."
             />
@@ -273,13 +275,13 @@ export function VoiceAgentUI() {
                     onChange={(e) => handleFileChange(e, 'kb')}
                     ref={kbFileInputRef}
                     className="hidden" 
-                    disabled={isProcessing || isRecording}
+                    disabled={isProcessing || isRecording || status === 'speaking'}
                 />
                 <Button 
                     onClick={() => kbFileInputRef.current?.click()} 
                     variant="outline" 
                     className="w-full"
-                    disabled={isProcessing || isRecording}
+                    disabled={isProcessing || isRecording || status === 'speaking'}
                 >
                     <FileUp className="mr-2 h-4 w-4" />
                     {knowledgeBasePdfName ? "Change PDF" : "Select PDF"}
@@ -298,7 +300,7 @@ export function VoiceAgentUI() {
             <KnowledgeBase
               value={medicalReportText!}
               onChange={setMedicalReportText}
-              disabled={isProcessing || isRecording}
+              disabled={isProcessing || isRecording || status === 'speaking'}
               label="Medical Report (Text)"
               placeholder="Enter medical reports, test results, and health issues here..."
             />
@@ -315,13 +317,13 @@ export function VoiceAgentUI() {
                     onChange={(e) => handleFileChange(e, 'medical')}
                     ref={medicalFileInputRef}
                     className="hidden" 
-                    disabled={isProcessing || isRecording}
+                    disabled={isProcessing || isRecording || status === 'speaking'}
                 />
                 <Button 
                     onClick={() => medicalFileInputRef.current?.click()} 
                     variant="outline" 
                     className="w-full"
-                    disabled={isProcessing || isRecording}
+                    disabled={isProcessing || isRecording || status === 'speaking'}
                 >
                     <FileUp className="mr-2 h-4 w-4" />
                     {medicalReportPdfName ? "Change PDF" : "Select PDF"}
@@ -340,14 +342,17 @@ export function VoiceAgentUI() {
 
       <Card className="md:col-span-2">
         <CardHeader>
-          <div className="flex justify-between items-center">
+          <div className="flex justify-between items-start">
             <div>
               <CardTitle>Voice Agent Interaction</CardTitle>
               <CardDescription>Click the button to talk to the agent.</CardDescription>
             </div>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Bot className="w-5 h-5"/>
-              <span>{currentAgentConfig.label}</span>
+             <div className="flex flex-col items-center gap-2 text-sm text-muted-foreground">
+                <AgentAvatar status={status} />
+                <div className="flex items-center gap-2">
+                    <Bot className="w-5 h-5"/>
+                    <span>{currentAgentConfig.label}</span>
+                </div>
             </div>
           </div>
         </CardHeader>
