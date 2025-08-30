@@ -16,27 +16,66 @@ import { transcribeSpeechToText } from "@/ai/flows/transcribe-speech-to-text";
 import { generateAgentResponse } from "@/ai/flows/generate-agent-response";
 import { incorporateCustomerServiceKnowledge } from "@/ai/flows/incorporate-customer-service-knowledge";
 import { convertTextToSpeech } from "@/ai/flows/convert-text-to-speech";
+import { assistElderlyPatient } from "@/ai/flows/assist-elderly-patient";
 
 type Status = "idle" | "recording" | "processing" | "speaking";
-type AgentType = "generic" | "customerService";
+type AgentType = "generic" | "customerService" | "elderCare";
 
-const DEFAULT_KNOWLEDGE_BASE = `
+const KNOWLEDGE_BASES = {
+  customerService: `
 - Our store is open from 9 AM to 8 PM on weekdays.
 - We are open from 10 AM to 6 PM on weekends.
 - To return an item, you need the original receipt and the item must be in its original packaging. Returns are accepted within 30 days of purchase.
 - For technical support, please call 1-800-555-TECH.
 - We are located at 123 Main Street, Anytown, USA.
-`.trim();
+`.trim(),
+  elderCare: `
+- Blood Pressure Reading (Today): 130/85 mmHg. This is slightly elevated.
+- Blood Sugar Level (Fasting, Yesterday): 95 mg/dL. This is in the normal range.
+- Upcoming Appointments: Dr. Smith (Cardiologist) on July 15th at 10:00 AM.
+- Recent Test Results: Cholesterol levels are normal.
+- Medication Reminder: Take Metformin 500mg after breakfast. Take Lisinopril 10mg in the morning.
+`.trim()
+};
+
+const AGENT_CONFIG = {
+    generic: {
+        label: "Generic Assistant",
+        knowledgeBase: null,
+        knowledgeBaseLabel: "",
+        knowledgeBasePlaceholder: ""
+    },
+    customerService: {
+        label: "Customer Service Bot",
+        knowledgeBase: KNOWLEDGE_BASES.customerService,
+        knowledgeBaseLabel: "Customer Service Knowledge Base",
+        knowledgeBasePlaceholder: "Enter common support questions and answers here..."
+    },
+    elderCare: {
+        label: "Elder Care Assistant",
+        knowledgeBase: KNOWLEDGE_BASES.elderCare,
+        knowledgeBaseLabel: "Patient Medical Information",
+        knowledgeBasePlaceholder: "Enter medical reports, test results, and health issues here..."
+    }
+}
 
 export function VoiceAgentUI() {
   const [status, setStatus] = useState<Status>("idle");
   const [messages, setMessages] = useState<Message[]>([]);
   const [agentType, setAgentType] = useState<AgentType>("generic");
-  const [knowledgeBase, setKnowledgeBase] = useState(DEFAULT_KNOWLEDGE_BASE);
+  const [knowledgeBase, setKnowledgeBase] = useState(AGENT_CONFIG.customerService.knowledgeBase);
 
   const { isRecording, startRecording, stopRecording } = useAudioRecorder();
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
   const { toast } = useToast();
+
+  const handleAgentChange = (value: AgentType) => {
+    setAgentType(value);
+    const newConfig = AGENT_CONFIG[value];
+    if (newConfig.knowledgeBase) {
+        setKnowledgeBase(newConfig.knowledgeBase);
+    }
+  }
 
   const handleInteraction = async () => {
     if (isRecording) {
@@ -57,6 +96,12 @@ export function VoiceAgentUI() {
             customerQuery: transcription,
           });
           agentResponseText = response;
+        } else if (agentType === 'elderCare') {
+            const { response } = await assistElderlyPatient({
+                medicalKnowledge: knowledgeBase,
+                patientQuery: transcription
+            });
+            agentResponseText = response;
         } else {
           const { agentResponse } = await generateAgentResponse({
             transcribedText: transcription,
@@ -105,6 +150,8 @@ export function VoiceAgentUI() {
         return <><Mic className="h-6 w-6 mr-2" /> Start Recording</>;
     }
   };
+  
+  const currentAgentConfig = AGENT_CONFIG[agentType];
 
   return (
     <div className="grid md:grid-cols-3 gap-6 pt-4">
@@ -119,7 +166,7 @@ export function VoiceAgentUI() {
             <Label>Agent Type</Label>
             <RadioGroup
               value={agentType}
-              onValueChange={(value) => setAgentType(value as AgentType)}
+              onValueChange={(value) => handleAgentChange(value as AgentType)}
               disabled={isProcessing}
             >
               <div className="flex items-center space-x-2">
@@ -130,14 +177,20 @@ export function VoiceAgentUI() {
                 <RadioGroupItem value="customerService" id="customer" />
                 <Label htmlFor="customer">Customer Service Bot</Label>
               </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="elderCare" id="elderCare" />
+                <Label htmlFor="elderCare">Elder Care Assistant</Label>
+              </div>
             </RadioGroup>
           </div>
 
-          {agentType === "customerService" && (
+          {currentAgentConfig.knowledgeBase && (
             <KnowledgeBase
               value={knowledgeBase}
               onChange={setKnowledgeBase}
               disabled={isProcessing}
+              label={currentAgentConfig.knowledgeBaseLabel}
+              placeholder={currentAgentConfig.knowledgeBasePlaceholder}
             />
           )}
         </CardContent>
@@ -152,7 +205,7 @@ export function VoiceAgentUI() {
             </div>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Bot className="w-5 h-5"/>
-              <span>{agentType === "generic" ? "Generic Assistant" : "Customer Service Bot"}</span>
+              <span>{currentAgentConfig.label}</span>
             </div>
           </div>
         </CardHeader>
