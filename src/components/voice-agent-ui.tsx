@@ -32,6 +32,13 @@ const KNOWLEDGE_BASES = {
 - For technical support, please call 1-800-555-TECH.
 - We are located at 123 Main Street, Anytown, USA.
 `.trim(),
+  elderCare: `
+- Blood Pressure Reading (Today): 130/85 mmHg. This is slightly elevated.
+- Blood Sugar Level (Fasting, Yesterday): 95 mg/dL. This is in the normal range.
+- Upcoming Appointments: Dr. Smith (Cardiologist) on July 15th at 10:00 AM.
+- Recent Test Results: Cholesterol levels are normal.
+- Medication Reminder: Take Metformin 500mg after breakfast. Take Lisinopril 10mg in the morning.
+`.trim(),
 };
 
 const AGENT_CONFIG = {
@@ -45,7 +52,7 @@ const AGENT_CONFIG = {
     },
     elderCare: {
         label: "Elder Care Assistant",
-        knowledgeBase: null, // PDF will be used instead
+        knowledgeBase: KNOWLEDGE_BASES.elderCare,
     }
 }
 
@@ -56,19 +63,25 @@ export function VoiceAgentUI() {
   const [knowledgeBase, setKnowledgeBase] = useState(AGENT_CONFIG.customerService.knowledgeBase);
   const [knowledgeBasePdf, setKnowledgeBasePdf] = useState<string | null>(null);
   const [knowledgeBasePdfName, setKnowledgeBasePdfName] = useState<string | null>(null);
-  const [medicalReport, setMedicalReport] = useState<string | null>(null);
-  const [medicalReportName, setMedicalReportName] = useState<string | null>(null);
+  const [medicalReportText, setMedicalReportText] = useState(AGENT_CONFIG.elderCare.knowledgeBase);
+  const [medicalReportPdf, setMedicalReportPdf] = useState<string | null>(null);
+  const [medicalReportPdfName, setMedicalReportPdfName] = useState<string | null>(null);
 
   const { isRecording, startRecording, stopRecording } = useAudioRecorder();
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const medicalFileInputRef = useRef<HTMLInputElement | null>(null);
+  const kbFileInputRef = useRef<HTMLInputElement | null>(null);
   const { toast } = useToast();
 
   const handleAgentChange = (value: AgentType) => {
     setAgentType(value);
     const newConfig = AGENT_CONFIG[value];
     if (newConfig.knowledgeBase) {
-        setKnowledgeBase(newConfig.knowledgeBase);
+        if (value === 'customerService') {
+            setKnowledgeBase(newConfig.knowledgeBase);
+        } else if (value === 'elderCare') {
+            setMedicalReportText(newConfig.knowledgeBase);
+        }
     }
   }
 
@@ -78,8 +91,8 @@ export function VoiceAgentUI() {
       const reader = new FileReader();
       reader.onload = (e) => {
         if (fileType === 'medical') {
-          setMedicalReport(e.target?.result as string);
-          setMedicalReportName(file.name);
+          setMedicalReportPdf(e.target?.result as string);
+          setMedicalReportPdfName(file.name);
           toast({
               title: "Medical Report Uploaded",
               description: `${file.name} has been successfully uploaded.`,
@@ -117,27 +130,25 @@ export function VoiceAgentUI() {
       // LLM
       let agentResponseText: string;
       if (agentType === "customerService") {
-        let combinedKnowledgeBase = knowledgeBase!;
-        // If a PDF is uploaded, it takes precedence. Otherwise, use the text area.
-        const kbToUse = knowledgeBasePdf || combinedKnowledgeBase;
-
+        const kbToUse = knowledgeBasePdf || knowledgeBase!;
         const { response } = await incorporateCustomerServiceKnowledge({
           knowledgeBase: kbToUse,
           customerQuery: transcription,
         });
         agentResponseText = response;
       } else if (agentType === 'elderCare') {
-          if (!medicalReport) {
+          const reportToUse = medicalReportPdf || medicalReportText;
+          if (!reportToUse) {
               toast({
                   variant: "destructive",
-                  title: "Missing Medical Report",
-                  description: "Please upload a medical report PDF for the Elder Care Assistant.",
+                  title: "Missing Medical Information",
+                  description: "Please provide a medical report for the Elder Care Assistant.",
               });
               setStatus("idle");
               return;
           }
           const { response } = await assistElderlyPatient({
-              medicalReportPdf: medicalReport,
+              medicalReport: reportToUse,
               patientQuery: transcription
           });
           agentResponseText = response;
@@ -260,12 +271,12 @@ export function VoiceAgentUI() {
                     type="file"
                     accept=".pdf"
                     onChange={(e) => handleFileChange(e, 'kb')}
-                    ref={fileInputRef}
+                    ref={kbFileInputRef}
                     className="hidden" 
                     disabled={isProcessing || isRecording}
                 />
                 <Button 
-                    onClick={() => fileInputRef.current?.click()} 
+                    onClick={() => kbFileInputRef.current?.click()} 
                     variant="outline" 
                     className="w-full"
                     disabled={isProcessing || isRecording}
@@ -283,7 +294,18 @@ export function VoiceAgentUI() {
             </div>
           </>)}
 
-          {agentType === 'elderCare' && (
+          {agentType === 'elderCare' && (<>
+            <KnowledgeBase
+              value={medicalReportText!}
+              onChange={setMedicalReportText}
+              disabled={isProcessing || isRecording}
+              label="Medical Report (Text)"
+              placeholder="Enter medical reports, test results, and health issues here..."
+            />
+            <div className="relative">
+                <Separator />
+                <span className="absolute left-1/2 -translate-x-1/2 -top-2.5 bg-card px-2 text-sm text-muted-foreground">OR</span>
+            </div>
             <div className="space-y-2">
                 <Label htmlFor="pdf-upload">Upload Medical Report (PDF)</Label>
                 <Input
@@ -291,27 +313,28 @@ export function VoiceAgentUI() {
                     type="file"
                     accept=".pdf"
                     onChange={(e) => handleFileChange(e, 'medical')}
-                    ref={fileInputRef}
+                    ref={medicalFileInputRef}
                     className="hidden" 
                     disabled={isProcessing || isRecording}
                 />
                 <Button 
-                    onClick={() => fileInputRef.current?.click()} 
+                    onClick={() => medicalFileInputRef.current?.click()} 
                     variant="outline" 
                     className="w-full"
                     disabled={isProcessing || isRecording}
                 >
                     <FileUp className="mr-2 h-4 w-4" />
-                    {medicalReportName ? "Change PDF" : "Select PDF"}
+                    {medicalReportPdfName ? "Change PDF" : "Select PDF"}
                 </Button>
-                {medicalReportName && (
+                {medicalReportPdfName && (
                     <div className="flex items-center text-sm text-muted-foreground pt-2">
                         <FileCheck className="h-4 w-4 mr-2 text-green-500"/>
-                        <span className="truncate">{medicalReportName}</span>
+                        <span className="truncate">{medicalReportPdfName}</span>
                     </div>
                 )}
+                <p className="text-xs text-muted-foreground">If a PDF is uploaded, it will be used as the medical report, overriding the text input.</p>
             </div>
-          )}
+          </>)}
         </CardContent>
       </Card>
 
@@ -357,5 +380,3 @@ export function VoiceAgentUI() {
     </div>
   );
 }
-
-    

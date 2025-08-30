@@ -12,10 +12,10 @@ import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 
 const AssistElderlyPatientInputSchema = z.object({
-  medicalReportPdf: z
+  medicalReport: z
     .string()
     .describe(
-      "The patient's medical report as a PDF data URI. The format must be 'data:application/pdf;base64,<encoded_data>'."
+      "The patient's medical report as a string or a PDF data URI. If data URI, it must be in the format 'data:application/pdf;base64,<encoded_data>'."
     ),
   patientQuery: z.string().describe("The patient's query."),
 });
@@ -40,14 +40,27 @@ export async function assistElderlyPatient(
   return assistElderlyPatientFlow(input);
 }
 
-const prompt = ai.definePrompt({
-  name: 'assistElderlyPatientPrompt',
+const textPrompt = ai.definePrompt({
+  name: 'assistElderlyPatientTextPrompt',
   input: {schema: AssistElderlyPatientInputSchema},
   output: {schema: AssistElderlyPatientOutputSchema},
   prompt: `You are a helpful medical assistant for an elderly patient. Use the following medical report to respond to the patient's query in a clear, simple, and reassuring way. Do not provide medical advice.
 
 Medical Report:
-{{media url=medicalReportPdf}}
+{{{medicalReport}}}
+
+Patient Query:
+{{{patientQuery}}}`,
+});
+
+const pdfPrompt = ai.definePrompt({
+  name: 'assistElderlyPatientPdfPrompt',
+  input: {schema: AssistElderlyPatientInputSchema},
+  output: {schema: AssistElderlyPatientOutputSchema},
+  prompt: `You are a helpful medical assistant for an elderly patient. Use the following medical report to respond to the patient's query in a clear, simple, and reassuring way. Do not provide medical advice.
+
+Medical Report:
+{{media url=medicalReport}}
 
 Patient Query:
 {{{patientQuery}}}`,
@@ -60,7 +73,8 @@ const assistElderlyPatientFlow = ai.defineFlow(
     outputSchema: AssistElderlyPatientOutputSchema,
   },
   async input => {
-    const {output} = await prompt(input);
+    const promptToUse = input.medicalReport.startsWith("data:application/pdf;base64,") ? pdfPrompt : textPrompt;
+    const {output} = await promptToUse(input);
     return output!;
   }
 );
