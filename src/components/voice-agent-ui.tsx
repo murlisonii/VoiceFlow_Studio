@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { Bot, Loader, Mic, Square, Volume2, FileUp, FileCheck } from "lucide-react";
+import { Bot, Loader, Mic, Square, Volume2, FileUp, FileCheck, StopCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -92,66 +92,70 @@ export function VoiceAgentUI() {
     }
   };
 
-  const handleInteraction = async () => {
-    if (isRecording) {
-      // Stop recording and process
-      setStatus("processing");
-      try {
-        const audioDataUri = await stopRecording();
+  const processRecording = async () => {
+    if (!isRecording) return;
+    setStatus("processing");
+    try {
+      const audioDataUri = await stopRecording();
 
-        // STT
-        const { transcription } = await transcribeSpeechToText({ audioDataUri });
-        setMessages((prev) => [...prev, { role: "user", text: transcription }]);
+      // STT
+      const { transcription } = await transcribeSpeechToText({ audioDataUri });
+      setMessages((prev) => [...prev, { role: "user", text: transcription }]);
 
-        // LLM
-        let agentResponseText: string;
-        if (agentType === "customerService") {
-          const { response } = await incorporateCustomerServiceKnowledge({
-            knowledgeBase: knowledgeBase!,
-            customerQuery: transcription,
+      // LLM
+      let agentResponseText: string;
+      if (agentType === "customerService") {
+        const { response } = await incorporateCustomerServiceKnowledge({
+          knowledgeBase: knowledgeBase!,
+          customerQuery: transcription,
+        });
+        agentResponseText = response;
+      } else if (agentType === 'elderCare') {
+          if (!medicalReport) {
+              toast({
+                  variant: "destructive",
+                  title: "Missing Medical Report",
+                  description: "Please upload a medical report PDF for the Elder Care Assistant.",
+              });
+              setStatus("idle");
+              return;
+          }
+          const { response } = await assistElderlyPatient({
+              medicalReportPdf: medicalReport,
+              patientQuery: transcription
           });
           agentResponseText = response;
-        } else if (agentType === 'elderCare') {
-            if (!medicalReport) {
-                toast({
-                    variant: "destructive",
-                    title: "Missing Medical Report",
-                    description: "Please upload a medical report PDF for the Elder Care Assistant.",
-                });
-                setStatus("idle");
-                return;
-            }
-            const { response } = await assistElderlyPatient({
-                medicalReportPdf: medicalReport,
-                patientQuery: transcription
-            });
-            agentResponseText = response;
-        } else {
-          const { agentResponse } = await generateAgentResponse({
-            transcribedText: transcription,
-          });
-          agentResponseText = agentResponse;
-        }
-        setMessages((prev) => [...prev, { role: "agent", text: agentResponseText }]);
-
-        // TTS
-        const { audioDataUri: speechUri } = await convertTextToSpeech({ text: agentResponseText });
-        
-        if (audioPlayerRef.current) {
-          audioPlayerRef.current.src = speechUri;
-          setStatus("speaking");
-          audioPlayerRef.current.play();
-        }
-
-      } catch (error) {
-        console.error("Interaction failed:", error);
-        toast({
-          variant: "destructive",
-          title: "An error occurred",
-          description: "Could not process the request. Please try again.",
+      } else {
+        const { agentResponse } = await generateAgentResponse({
+          transcribedText: transcription,
         });
-        setStatus("idle");
+        agentResponseText = agentResponse;
       }
+      setMessages((prev) => [...prev, { role: "agent", text: agentResponseText }]);
+
+      // TTS
+      const { audioDataUri: speechUri } = await convertTextToSpeech({ text: agentResponseText });
+      
+      if (audioPlayerRef.current) {
+        audioPlayerRef.current.src = speechUri;
+        setStatus("speaking");
+        audioPlayerRef.current.play();
+      }
+
+    } catch (error) {
+      console.error("Interaction failed:", error);
+      toast({
+        variant: "destructive",
+        title: "An error occurred",
+        description: "Could not process the request. Please try again.",
+      });
+      setStatus("idle");
+    }
+  }
+
+  const handleStartInteraction = async () => {
+    if (isRecording) {
+      await processRecording();
     } else {
       // Start recording
       await startRecording();
@@ -159,16 +163,29 @@ export function VoiceAgentUI() {
     }
   };
 
-  const isProcessing = status === "processing" || status === "speaking";
+  const handleStop = async () => {
+    if (isRecording) {
+      await processRecording();
+    } else if (status === 'speaking' && audioPlayerRef.current) {
+      audioPlayerRef.current.pause();
+      audioPlayerRef.current.currentTime = 0;
+      setStatus('idle');
+    } else if (status === 'processing' || status === 'recording') {
+       if (isRecording) await stopRecording();
+       setStatus('idle');
+    }
+  }
+
+  const isProcessing = status === "processing";
 
   const getButtonContent = () => {
     switch (status) {
       case "recording":
-        return <><Square className="h-6 w-6 mr-2 fill-current text-destructive animate-pulse" /> Stop Recording</>;
+        return <><Square className="h-6 w-6 mr-2 fill-current text-destructive animate-pulse" /> Stop & Process</>;
       case "processing":
         return <><Loader className="h-6 w-6 mr-2 animate-spin" /> Processing...</>;
       case "speaking":
-        return <><Volume2 className="h-6 w-6 mr-2 animate-pulse" /> Speaking...</>;
+         return <><Volume2 className="h-6 w-6 mr-2 animate-pulse" /> Speaking...</>;
       case "idle":
       default:
         return <><Mic className="h-6 w-6 mr-2" /> Start Recording</>;
@@ -191,7 +208,7 @@ export function VoiceAgentUI() {
             <RadioGroup
               value={agentType}
               onValueChange={(value) => handleAgentChange(value as AgentType)}
-              disabled={isProcessing}
+              disabled={isProcessing || isRecording}
             >
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="generic" id="generic" />
@@ -212,7 +229,7 @@ export function VoiceAgentUI() {
             <KnowledgeBase
               value={knowledgeBase!}
               onChange={setKnowledgeBase}
-              disabled={isProcessing}
+              disabled={isProcessing || isRecording}
               label="Customer Service Knowledge Base"
               placeholder="Enter common support questions and answers here..."
             />
@@ -228,13 +245,13 @@ export function VoiceAgentUI() {
                     onChange={handleFileChange}
                     ref={fileInputRef}
                     className="hidden" 
-                    disabled={isProcessing}
+                    disabled={isProcessing || isRecording}
                 />
                 <Button 
                     onClick={() => fileInputRef.current?.click()} 
                     variant="outline" 
                     className="w-full"
-                    disabled={isProcessing}
+                    disabled={isProcessing || isRecording}
                 >
                     <FileUp className="mr-2 h-4 w-4" />
                     {medicalReportName ? "Change PDF" : "Select PDF"}
@@ -267,14 +284,24 @@ export function VoiceAgentUI() {
           <div className="flex-grow">
             <ConversationDisplay messages={messages} />
           </div>
-          <div className="flex-shrink-0 pt-4 border-t">
+          <div className="flex-shrink-0 pt-4 border-t space-y-2">
             <Button
-              onClick={handleInteraction}
-              disabled={isProcessing}
+              onClick={handleStartInteraction}
+              disabled={isProcessing || status === 'speaking'}
               className="w-full text-lg py-6"
               size="lg"
             >
               {getButtonContent()}
+            </Button>
+            <Button
+              onClick={handleStop}
+              disabled={status === 'idle'}
+              variant="destructive"
+              className="w-full"
+              size="lg"
+            >
+              <StopCircle className="mr-2 h-6 w-6"/>
+              Stop
             </Button>
           </div>
         </CardContent>
