@@ -16,7 +16,7 @@ const IncorporateCustomerServiceKnowledgeInputSchema = z.object({
   knowledgeBase: z
     .string()
     .describe(
-      'The customer service knowledge base, as a string.  This should include common support inquiries and their solutions.'
+      'The customer service knowledge base, as a string or a data URI for a PDF. If data URI, it must be in the format \'data:application/pdf;base64,<encoded_data>\'.'
     ),
   customerQuery: z.string().describe('The customer query to be answered.'),
 });
@@ -41,12 +41,32 @@ export async function incorporateCustomerServiceKnowledge(
   return incorporateCustomerServiceKnowledgeFlow(input);
 }
 
-const prompt = ai.definePrompt({
-  name: 'incorporateCustomerServiceKnowledgePrompt',
+const textPrompt = ai.definePrompt({
+  name: 'incorporateCustomerServiceKnowledgeTextPrompt',
   input: {schema: IncorporateCustomerServiceKnowledgeInputSchema},
   output: {schema: IncorporateCustomerServiceKnowledgeOutputSchema},
-  prompt: `You are a customer service agent.  Use the following knowledge base to respond to the customer query.\n\nKnowledge Base:\n{{{knowledgeBase}}}\n\nCustomer Query:\n{{{customerQuery}}}`,
+  prompt: `You are a customer service agent.  Use the following knowledge base to respond to the customer query.
+
+Knowledge Base:
+{{{knowledgeBase}}}
+
+Customer Query:
+{{{customerQuery}}}`,
 });
+
+const pdfPrompt = ai.definePrompt({
+    name: 'incorporateCustomerServiceKnowledgePdfPrompt',
+    input: {schema: IncorporateCustomerServiceKnowledgeInputSchema},
+    output: {schema: IncorporateCustomerServiceKnowledgeOutputSchema},
+    prompt: `You are a customer service agent.  Use the following knowledge base to respond to the customer query.
+
+Knowledge Base:
+{{media url=knowledgeBase}}
+
+Customer Query:
+{{{customerQuery}}}`,
+});
+
 
 const incorporateCustomerServiceKnowledgeFlow = ai.defineFlow(
   {
@@ -55,7 +75,8 @@ const incorporateCustomerServiceKnowledgeFlow = ai.defineFlow(
     outputSchema: IncorporateCustomerServiceKnowledgeOutputSchema,
   },
   async input => {
-    const {output} = await prompt(input);
+    const promptToUse = input.knowledgeBase.startsWith("data:application/pdf;base64,") ? pdfPrompt : textPrompt;
+    const {output} = await promptToUse(input);
     return output!;
   }
 );

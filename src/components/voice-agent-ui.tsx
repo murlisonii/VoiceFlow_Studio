@@ -12,6 +12,7 @@ import { KnowledgeBase } from "./knowledge-base";
 import { ConversationDisplay, type Message } from "./conversation-display";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { Separator } from "@/components/ui/separator";
 
 // AI Flow Imports
 import { transcribeSpeechToText } from "@/ai/flows/transcribe-speech-to-text";
@@ -53,12 +54,14 @@ export function VoiceAgentUI() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [agentType, setAgentType] = useState<AgentType>("generic");
   const [knowledgeBase, setKnowledgeBase] = useState(AGENT_CONFIG.customerService.knowledgeBase);
+  const [knowledgeBasePdf, setKnowledgeBasePdf] = useState<string | null>(null);
+  const [knowledgeBasePdfName, setKnowledgeBasePdfName] = useState<string | null>(null);
   const [medicalReport, setMedicalReport] = useState<string | null>(null);
   const [medicalReportName, setMedicalReportName] = useState<string | null>(null);
 
   const { isRecording, startRecording, stopRecording } = useAudioRecorder();
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const { toast } = useToast();
 
   const handleAgentChange = (value: AgentType) => {
@@ -69,17 +72,26 @@ export function VoiceAgentUI() {
     }
   }
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>, fileType: 'medical' | 'kb') => {
     const file = event.target.files?.[0];
     if (file) {
       const reader = new FileReader();
       reader.onload = (e) => {
-        setMedicalReport(e.target?.result as string);
-        setMedicalReportName(file.name);
-         toast({
-            title: "File Uploaded",
-            description: `${file.name} has been successfully uploaded.`,
-        });
+        if (fileType === 'medical') {
+          setMedicalReport(e.target?.result as string);
+          setMedicalReportName(file.name);
+          toast({
+              title: "Medical Report Uploaded",
+              description: `${file.name} has been successfully uploaded.`,
+          });
+        } else {
+          setKnowledgeBasePdf(e.target?.result as string);
+          setKnowledgeBasePdfName(file.name);
+           toast({
+              title: "Knowledge Base Uploaded",
+              description: `${file.name} has been successfully uploaded as the knowledge base.`,
+          });
+        }
       };
       reader.onerror = () => {
         toast({
@@ -105,8 +117,12 @@ export function VoiceAgentUI() {
       // LLM
       let agentResponseText: string;
       if (agentType === "customerService") {
+        let combinedKnowledgeBase = knowledgeBase!;
+        // If a PDF is uploaded, it takes precedence. Otherwise, use the text area.
+        const kbToUse = knowledgeBasePdf || combinedKnowledgeBase;
+
         const { response } = await incorporateCustomerServiceKnowledge({
-          knowledgeBase: knowledgeBase!,
+          knowledgeBase: kbToUse,
           customerQuery: transcription,
         });
         agentResponseText = response;
@@ -225,15 +241,47 @@ export function VoiceAgentUI() {
             </RadioGroup>
           </div>
 
-          {agentType === 'customerService' && (
+          {agentType === 'customerService' && (<>
             <KnowledgeBase
               value={knowledgeBase!}
               onChange={setKnowledgeBase}
               disabled={isProcessing || isRecording}
-              label="Customer Service Knowledge Base"
+              label="Customer Service Knowledge Base (Text)"
               placeholder="Enter common support questions and answers here..."
             />
-          )}
+            <div className="relative">
+                <Separator />
+                <span className="absolute left-1/2 -translate-x-1/2 -top-2.5 bg-card px-2 text-sm text-muted-foreground">OR</span>
+            </div>
+             <div className="space-y-2">
+                <Label htmlFor="kb-pdf-upload">Upload Knowledge Base (PDF)</Label>
+                <Input
+                    id="kb-pdf-upload"
+                    type="file"
+                    accept=".pdf"
+                    onChange={(e) => handleFileChange(e, 'kb')}
+                    ref={fileInputRef}
+                    className="hidden" 
+                    disabled={isProcessing || isRecording}
+                />
+                <Button 
+                    onClick={() => fileInputRef.current?.click()} 
+                    variant="outline" 
+                    className="w-full"
+                    disabled={isProcessing || isRecording}
+                >
+                    <FileUp className="mr-2 h-4 w-4" />
+                    {knowledgeBasePdfName ? "Change PDF" : "Select PDF"}
+                </Button>
+                {knowledgeBasePdfName && (
+                    <div className="flex items-center text-sm text-muted-foreground pt-2">
+                        <FileCheck className="h-4 w-4 mr-2 text-green-500"/>
+                        <span className="truncate">{knowledgeBasePdfName}</span>
+                    </div>
+                )}
+                 <p className="text-xs text-muted-foreground">If a PDF is uploaded, it will be used as the knowledge base, overriding the text input.</p>
+            </div>
+          </>)}
 
           {agentType === 'elderCare' && (
             <div className="space-y-2">
@@ -242,7 +290,7 @@ export function VoiceAgentUI() {
                     id="pdf-upload"
                     type="file"
                     accept=".pdf"
-                    onChange={handleFileChange}
+                    onChange={(e) => handleFileChange(e, 'medical')}
                     ref={fileInputRef}
                     className="hidden" 
                     disabled={isProcessing || isRecording}
@@ -309,3 +357,5 @@ export function VoiceAgentUI() {
     </div>
   );
 }
+
+    
