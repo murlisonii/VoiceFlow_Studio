@@ -20,9 +20,10 @@ import { generateAgentResponse } from "@/ai/flows/generate-agent-response";
 import { incorporateCustomerServiceKnowledge } from "@/ai/flows/incorporate-customer-service-knowledge";
 import { convertTextToSpeech } from "@/ai/flows/convert-text-to-speech";
 import { assistElderlyPatient } from "@/ai/flows/assist-elderly-patient";
+import { impersonatePersona } from "@/ai/flows/impersonate-persona";
 
 type Status = "idle" | "recording" | "processing" | "speaking";
-type AgentType = "generic" | "customerService" | "elderCare";
+type AgentType = "generic" | "customerService" | "elderCare" | "customPersona";
 
 const KNOWLEDGE_BASES = {
   customerService: `
@@ -39,20 +40,21 @@ const KNOWLEDGE_BASES = {
 - Recent Test Results: Cholesterol levels are normal.
 - Medication Reminder: Take Metformin 500mg after breakfast. Take Lisinopril 10mg in the morning.
 `.trim(),
+  customPersona: `You are a witty, sarcastic pirate from the 17th century with a love for treasure. You call people 'matey' and are always talking about finding treasure and sailing the seven seas.`
 };
 
 const AGENT_CONFIG = {
     generic: {
         label: "Generic Assistant",
-        knowledgeBase: null,
     },
     customerService: {
         label: "Customer Service Bot",
-        knowledgeBase: KNOWLEDGE_BASES.customerService,
     },
     elderCare: {
         label: "Elder Care Assistant",
-        knowledgeBase: KNOWLEDGE_BASES.elderCare,
+    },
+    customPersona: {
+        label: "Custom Persona"
     }
 }
 
@@ -60,50 +62,48 @@ export function VoiceAgentUI() {
   const [status, setStatus] = useState<Status>("idle");
   const [messages, setMessages] = useState<Message[]>([]);
   const [agentType, setAgentType] = useState<AgentType>("generic");
-  const [knowledgeBase, setKnowledgeBase] = useState(AGENT_CONFIG.customerService.knowledgeBase);
+  
+  const [knowledgeBase, setKnowledgeBase] = useState(KNOWLEDGE_BASES.customerService);
   const [knowledgeBasePdf, setKnowledgeBasePdf] = useState<string | null>(null);
   const [knowledgeBasePdfName, setKnowledgeBasePdfName] = useState<string | null>(null);
-  const [medicalReportText, setMedicalReportText] = useState(AGENT_CONFIG.elderCare.knowledgeBase);
+
+  const [medicalReportText, setMedicalReportText] = useState(KNOWLEDGE_BASES.elderCare);
   const [medicalReportPdf, setMedicalReportPdf] = useState<string | null>(null);
   const [medicalReportPdfName, setMedicalReportPdfName] = useState<string | null>(null);
+
+  const [personaText, setPersonaText] = useState(KNOWLEDGE_BASES.customPersona);
+  const [personaPdf, setPersonaPdf] = useState<string | null>(null);
+  const [personaPdfName, setPersonaPdfName] = useState<string | null>(null);
 
   const { isRecording, startRecording, stopRecording } = useAudioRecorder();
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
   const medicalFileInputRef = useRef<HTMLInputElement | null>(null);
   const kbFileInputRef = useRef<HTMLInputElement | null>(null);
+  const personaFileInputRef = useRef<HTMLInputElement | null>(null);
   const { toast } = useToast();
 
   const handleAgentChange = (value: AgentType) => {
     setAgentType(value);
-    const newConfig = AGENT_CONFIG[value];
-    if (newConfig.knowledgeBase) {
-        if (value === 'customerService') {
-            setKnowledgeBase(newConfig.knowledgeBase);
-        } else if (value === 'elderCare') {
-            setMedicalReportText(newConfig.knowledgeBase);
-        }
-    }
   }
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>, fileType: 'medical' | 'kb') => {
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>, fileType: 'medical' | 'kb' | 'persona') => {
     const file = event.target.files?.[0];
     if (file) {
       const reader = new FileReader();
       reader.onload = (e) => {
+        const result = e.target?.result as string;
         if (fileType === 'medical') {
-          setMedicalReportPdf(e.target?.result as string);
+          setMedicalReportPdf(result);
           setMedicalReportPdfName(file.name);
-          toast({
-              title: "Medical Report Uploaded",
-              description: `${file.name} has been successfully uploaded.`,
-          });
-        } else {
-          setKnowledgeBasePdf(e.target?.result as string);
+          toast({ title: "Medical Report Uploaded", description: `${file.name} has been successfully uploaded.` });
+        } else if (fileType === 'kb') {
+          setKnowledgeBasePdf(result);
           setKnowledgeBasePdfName(file.name);
-           toast({
-              title: "Knowledge Base Uploaded",
-              description: `${file.name} has been successfully uploaded as the knowledge base.`,
-          });
+           toast({ title: "Knowledge Base Uploaded", description: `${file.name} has been successfully uploaded.` });
+        } else if (fileType === 'persona') {
+            setPersonaPdf(result);
+            setPersonaPdfName(file.name);
+            toast({ title: "Persona PDF Uploaded", description: `${file.name} has been successfully uploaded.`});
         }
       };
       reader.onerror = () => {
@@ -130,7 +130,7 @@ export function VoiceAgentUI() {
       // LLM
       let agentResponseText: string;
       if (agentType === "customerService") {
-        const kbToUse = knowledgeBasePdf || knowledgeBase!;
+        const kbToUse = knowledgeBasePdf || knowledgeBase;
         const { response } = await incorporateCustomerServiceKnowledge({
           knowledgeBase: kbToUse,
           customerQuery: transcription,
@@ -152,6 +152,22 @@ export function VoiceAgentUI() {
               patientQuery: transcription
           });
           agentResponseText = response;
+      } else if (agentType === 'customPersona') {
+        const personaToUse = personaPdf || personaText;
+        if (!personaToUse) {
+            toast({
+                variant: "destructive",
+                title: "Missing Persona Information",
+                description: "Please provide a persona description.",
+            });
+            setStatus("idle");
+            return;
+        }
+        const { response } = await impersonatePersona({
+            personaDescription: personaToUse,
+            userQuery: transcription
+        });
+        agentResponseText = response;
       } else {
         const { agentResponse } = await generateAgentResponse({
           transcribedText: transcription,
@@ -250,6 +266,10 @@ export function VoiceAgentUI() {
                 <RadioGroupItem value="elderCare" id="elderCare" />
                 <Label htmlFor="elderCare">Elder Care Assistant</Label>
               </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="customPersona" id="customPersona" />
+                <Label htmlFor="customPersona">Custom Persona</Label>
+              </div>
             </RadioGroup>
           </div>
 
@@ -334,6 +354,48 @@ export function VoiceAgentUI() {
                     </div>
                 )}
                 <p className="text-xs text-muted-foreground">If a PDF is uploaded, it will be used as the medical report, overriding the text input.</p>
+            </div>
+          </>)}
+
+          {agentType === 'customPersona' && (<>
+            <KnowledgeBase
+              value={personaText!}
+              onChange={setPersonaText}
+              disabled={isProcessing || isRecording || status === 'speaking'}
+              label="Persona Description (Text)"
+              placeholder="Describe the persona for the agent to adopt..."
+            />
+            <div className="relative">
+                <Separator />
+                <span className="absolute left-1/2 -translate-x-1/2 -top-2.5 bg-card px-2 text-sm text-muted-foreground">OR</span>
+            </div>
+            <div className="space-y-2">
+                <Label htmlFor="persona-pdf-upload">Upload Persona Description (PDF)</Label>
+                <Input
+                    id="persona-pdf-upload"
+                    type="file"
+                    accept=".pdf"
+                    onChange={(e) => handleFileChange(e, 'persona')}
+                    ref={personaFileInputRef}
+                    className="hidden" 
+                    disabled={isProcessing || isRecording || status === 'speaking'}
+                />
+                <Button 
+                    onClick={() => personaFileInputRef.current?.click()} 
+                    variant="outline" 
+                    className="w-full"
+                    disabled={isProcessing || isRecording || status === 'speaking'}
+                >
+                    <FileUp className="mr-2 h-4 w-4" />
+                    {personaPdfName ? "Change PDF" : "Select PDF"}
+                </Button>
+                {personaPdfName && (
+                    <div className="flex items-center text-sm text-muted-foreground pt-2">
+                        <FileCheck className="h-4 w-4 mr-2 text-green-500"/>
+                        <span className="truncate">{personaPdfName}</span>
+                    </div>
+                )}
+                <p className="text-xs text-muted-foreground">If a PDF is uploaded, it will be used for the persona, overriding the text input.</p>
             </div>
           </>)}
         </CardContent>

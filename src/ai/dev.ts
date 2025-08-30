@@ -8,3 +8,4 @@ import '@/ai/flows/transcribe-speech-to-text.ts';
 import '@/ai/flows/answer-customer-service-inquiries.ts';
 import '@/ai/flows/generate-response-from-llm-agent.ts';
 import '@/ai/flows/assist-elderly-patient.ts';
+import '@/ai/flows/impersonate-persona.ts';

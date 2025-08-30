@@ -80,16 +80,32 @@ console.log(response);`}
             </CodeBlock>
             
             <h4 className="font-semibold mt-4 mb-2">C. Elder Care Assistant</h4>
-            <p>This agent can read a medical report in PDF format and answer patient questions about it.</p>
+            <p>This agent can read a medical report in PDF or text format and answer patient questions about it.</p>
             <CodeBlock>
 {`import { assistElderlyPatient } from '@/ai/flows/assist-elderly-patient';
 
-const medicalReportPdf = 'data:application/pdf;base64,...'; // Your PDF data
+const medicalReport = 'data:application/pdf;base64,...'; // Your PDF data or a string
 const patientQuery = "What does my latest blood pressure reading mean?";
 
 const { response } = await assistElderlyPatient({
-  medicalReportPdf,
+  medicalReport,
   patientQuery
+});
+
+console.log(response);`}
+            </CodeBlock>
+
+            <h4 className="font-semibold mt-4 mb-2">D. Custom Persona Agent</h4>
+            <p>This agent adopts a persona based on a provided description and answers queries in character.</p>
+            <CodeBlock>
+{`import { impersonatePersona } from '@/ai/flows/impersonate-persona';
+
+const personaDescription = "You are a witty, sarcastic pirate from the 17th century with a love for treasure.";
+const userQuery = "What is the weather like today?";
+
+const { response } = await impersonatePersona({
+  personaDescription,
+  userQuery
 });
 
 console.log(response);`}
@@ -118,7 +134,6 @@ const { audioDataUri } = await convertTextToSpeech({ text: textToSpeak });
             </CodeBlock>
         </CardContent>
       </Card>
-
     </div>
   );
 }
