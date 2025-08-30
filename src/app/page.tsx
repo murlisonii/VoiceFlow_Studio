@@ -1,6 +1,7 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { VoiceAgentUI } from "@/components/voice-agent-ui";
 import { ApiDocs } from "@/components/api-docs";
+import { TextToSpeechUI } from "@/components/text-to-speech-ui";
 
 export default function Home() {
   return (
@@ -39,12 +40,16 @@ export default function Home() {
       </div>
 
       <Tabs defaultValue="agent" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 max-w-md mx-auto">
+        <TabsList className="grid w-full grid-cols-3 max-w-2xl mx-auto">
           <TabsTrigger value="agent">Voice Agent Demo</TabsTrigger>
+          <TabsTrigger value="tts">Text-to-Speech</TabsTrigger>
           <TabsTrigger value="docs">API & SDK</TabsTrigger>
         </TabsList>
         <TabsContent value="agent">
           <VoiceAgentUI />
+        </TabsContent>
+        <TabsContent value="tts">
+            <TextToSpeechUI />
         </TabsContent>
         <TabsContent value="docs">
           <ApiDocs />

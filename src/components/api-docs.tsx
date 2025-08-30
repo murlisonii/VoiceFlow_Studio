@@ -11,7 +11,7 @@ const CodeBlock = ({ children }: { children: React.ReactNode }) => (
 
 export function ApiDocs() {
   return (
-    <div className="p-4 space-y-6">
+    (<div className="p-4 space-y-6">
       <Card>
         <CardHeader>
           <CardTitle>API & SDK Documentation</CardTitle>
@@ -103,6 +103,6 @@ const { audioDataUri } = await convertTextToSpeech({ text: textToSpeak });
         </CardContent>
       </Card>
 
-    </div>
+    </div>)
   );
 }
