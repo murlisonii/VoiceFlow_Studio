@@ -12,12 +12,12 @@ import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 
 const AssistElderlyPatientInputSchema = z.object({
-  medicalKnowledge: z
+  medicalReportPdf: z
     .string()
     .describe(
-      'The knowledge base of medical reports, test results, and health issues.'
+      "The patient's medical report as a PDF data URI. The format must be 'data:application/pdf;base64,<encoded_data>'."
     ),
-  patientQuery: z.string().describe('The patient\'s query.'),
+  patientQuery: z.string().describe("The patient's query."),
 });
 export type AssistElderlyPatientInput = z.infer<
   typeof AssistElderlyPatientInputSchema
@@ -27,7 +27,7 @@ const AssistElderlyPatientOutputSchema = z.object({
   response:
     z.string()
       .describe(
-        'The response to the patient\'s query, based on the provided medical knowledge.'
+        "The response to the patient's query, based on the provided medical knowledge."
       ),
 });
 export type AssistElderlyPatientOutput = z.infer<
@@ -44,10 +44,10 @@ const prompt = ai.definePrompt({
   name: 'assistElderlyPatientPrompt',
   input: {schema: AssistElderlyPatientInputSchema},
   output: {schema: AssistElderlyPatientOutputSchema},
-  prompt: `You are a helpful medical assistant for an elderly patient. Use the following medical information to respond to the patient's query in a clear, simple, and reassuring way. Do not provide medical advice.
+  prompt: `You are a helpful medical assistant for an elderly patient. Use the following medical report to respond to the patient's query in a clear, simple, and reassuring way. Do not provide medical advice.
 
-Medical Information:
-{{{medicalKnowledge}}}
+Medical Report:
+{{media url=medicalReportPdf}}
 
 Patient Query:
 {{{patientQuery}}}`,

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { Bot, Loader, Mic, Square, Volume2 } from "lucide-react";
+import { Bot, Loader, Mic, Square, Volume2, FileUp, FileCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -10,6 +10,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useAudioRecorder } from "@/hooks/use-audio-recorder";
 import { KnowledgeBase } from "./knowledge-base";
 import { ConversationDisplay, type Message } from "./conversation-display";
+import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 
 // AI Flow Imports
 import { transcribeSpeechToText } from "@/ai/flows/transcribe-speech-to-text";
@@ -29,33 +31,20 @@ const KNOWLEDGE_BASES = {
 - For technical support, please call 1-800-555-TECH.
 - We are located at 123 Main Street, Anytown, USA.
 `.trim(),
-  elderCare: `
-- Blood Pressure Reading (Today): 130/85 mmHg. This is slightly elevated.
-- Blood Sugar Level (Fasting, Yesterday): 95 mg/dL. This is in the normal range.
-- Upcoming Appointments: Dr. Smith (Cardiologist) on July 15th at 10:00 AM.
-- Recent Test Results: Cholesterol levels are normal.
-- Medication Reminder: Take Metformin 500mg after breakfast. Take Lisinopril 10mg in the morning.
-`.trim()
 };
 
 const AGENT_CONFIG = {
     generic: {
         label: "Generic Assistant",
         knowledgeBase: null,
-        knowledgeBaseLabel: "",
-        knowledgeBasePlaceholder: ""
     },
     customerService: {
         label: "Customer Service Bot",
         knowledgeBase: KNOWLEDGE_BASES.customerService,
-        knowledgeBaseLabel: "Customer Service Knowledge Base",
-        knowledgeBasePlaceholder: "Enter common support questions and answers here..."
     },
     elderCare: {
         label: "Elder Care Assistant",
-        knowledgeBase: KNOWLEDGE_BASES.elderCare,
-        knowledgeBaseLabel: "Patient Medical Information",
-        knowledgeBasePlaceholder: "Enter medical reports, test results, and health issues here..."
+        knowledgeBase: null, // PDF will be used instead
     }
 }
 
@@ -64,9 +53,12 @@ export function VoiceAgentUI() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [agentType, setAgentType] = useState<AgentType>("generic");
   const [knowledgeBase, setKnowledgeBase] = useState(AGENT_CONFIG.customerService.knowledgeBase);
+  const [medicalReport, setMedicalReport] = useState<string | null>(null);
+  const [medicalReportName, setMedicalReportName] = useState<string | null>(null);
 
   const { isRecording, startRecording, stopRecording } = useAudioRecorder();
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
   const handleAgentChange = (value: AgentType) => {
@@ -76,6 +68,29 @@ export function VoiceAgentUI() {
         setKnowledgeBase(newConfig.knowledgeBase);
     }
   }
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setMedicalReport(e.target?.result as string);
+        setMedicalReportName(file.name);
+         toast({
+            title: "File Uploaded",
+            description: `${file.name} has been successfully uploaded.`,
+        });
+      };
+      reader.onerror = () => {
+        toast({
+            variant: "destructive",
+            title: "File Read Error",
+            description: "Could not read the selected file.",
+        });
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   const handleInteraction = async () => {
     if (isRecording) {
@@ -92,13 +107,22 @@ export function VoiceAgentUI() {
         let agentResponseText: string;
         if (agentType === "customerService") {
           const { response } = await incorporateCustomerServiceKnowledge({
-            knowledgeBase,
+            knowledgeBase: knowledgeBase!,
             customerQuery: transcription,
           });
           agentResponseText = response;
         } else if (agentType === 'elderCare') {
+            if (!medicalReport) {
+                toast({
+                    variant: "destructive",
+                    title: "Missing Medical Report",
+                    description: "Please upload a medical report PDF for the Elder Care Assistant.",
+                });
+                setStatus("idle");
+                return;
+            }
             const { response } = await assistElderlyPatient({
-                medicalKnowledge: knowledgeBase,
+                medicalReportPdf: medicalReport,
                 patientQuery: transcription
             });
             agentResponseText = response;
@@ -184,14 +208,44 @@ export function VoiceAgentUI() {
             </RadioGroup>
           </div>
 
-          {currentAgentConfig.knowledgeBase && (
+          {agentType === 'customerService' && (
             <KnowledgeBase
-              value={knowledgeBase}
+              value={knowledgeBase!}
               onChange={setKnowledgeBase}
               disabled={isProcessing}
-              label={currentAgentConfig.knowledgeBaseLabel}
-              placeholder={currentAgentConfig.knowledgeBasePlaceholder}
+              label="Customer Service Knowledge Base"
+              placeholder="Enter common support questions and answers here..."
             />
+          )}
+
+          {agentType === 'elderCare' && (
+            <div className="space-y-2">
+                <Label htmlFor="pdf-upload">Upload Medical Report (PDF)</Label>
+                <Input
+                    id="pdf-upload"
+                    type="file"
+                    accept=".pdf"
+                    onChange={handleFileChange}
+                    ref={fileInputRef}
+                    className="hidden" 
+                    disabled={isProcessing}
+                />
+                <Button 
+                    onClick={() => fileInputRef.current?.click()} 
+                    variant="outline" 
+                    className="w-full"
+                    disabled={isProcessing}
+                >
+                    <FileUp className="mr-2 h-4 w-4" />
+                    {medicalReportName ? "Change PDF" : "Select PDF"}
+                </Button>
+                {medicalReportName && (
+                    <div className="flex items-center text-sm text-muted-foreground pt-2">
+                        <FileCheck className="h-4 w-4 mr-2 text-green-500"/>
+                        <span className="truncate">{medicalReportName}</span>
+                    </div>
+                )}
+            </div>
           )}
         </CardContent>
       </Card>
